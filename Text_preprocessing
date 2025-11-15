@@ -1,0 +1,103 @@
+
+import re
+import string
+import emoji
+import pandas as pd
+from textblob import TextBlob
+import nltk
+from nltk.corpus import stopwords
+from nltk.stem import PorterStemmer, WordNetLemmatizer
+from transformers import BertTokenizer
+
+# Download NLTK resources
+nltk.download("punkt")
+nltk.download("stopwords")
+nltk.download("wordnet")
+
+# ----------------------------------------------------
+# READ CSV FILE (Make sure data.csv contains a column "text")
+# ----------------------------------------------------
+df = pd.read_csv("text_data.csv")
+
+print("\n==================== LOADED DATA ====================")
+print(df.head())
+
+# Create output list
+processed_records = []
+
+# Load stopwords
+stop_words = set(stopwords.words("english"))
+ps = PorterStemmer()
+lemmatizer = WordNetLemmatizer()
+tokenizer = BertTokenizer.from_pretrained("bert-base-uncased")
+
+# ----------------------------------------------------
+# FUNCTION: PROCESS ONE TEXT
+# ----------------------------------------------------
+def process_text(text):
+
+    # 1. Lowercasing
+    lower_text = text.lower()
+
+    # 2. Sentence Splitting
+    sentences = nltk.sent_tokenize(lower_text)
+
+    # 3. Tokenization
+    tokens = nltk.word_tokenize(lower_text)
+
+    # 4. Remove punctuation
+    tokens_no_punct = [t for t in tokens if t not in string.punctuation]
+
+    # 5. Remove Stopwords
+    tokens_no_stop = [t for t in tokens_no_punct if t not in stop_words]
+
+    # 6. Stemming
+    stemmed = [ps.stem(t) for t in tokens_no_stop]
+
+    # 7. Lemmatization
+    lemmatized = [lemmatizer.lemmatize(t) for t in tokens_no_stop]
+
+    # 8. Remove URLs, emojis, hashtags, special chars
+    clean_step1 = re.sub(r"http\S+", "", text)
+    clean_step2 = emoji.replace_emoji(clean_step1, "")
+    clean_step3 = re.sub(r"#\w+", "", clean_step2)
+    clean_step4 = re.sub(r"[^\w\s]", "", clean_step3)
+    cleaned_text = clean_step4.lower()
+
+    # 9. Spelling Correction (slow for long text!)
+    corrected_text = str(TextBlob(cleaned_text).correct())
+
+    # 10. Subword Encoding (WordPiece)
+    subwords = tokenizer.tokenize(text)
+
+    # return everything
+    return {
+        "original": text,
+        "lowercase": lower_text,
+        "sentences": sentences,
+        "tokens": tokens,
+        "no_punctuation": tokens_no_punct,
+        "no_stopwords": tokens_no_stop,
+        "stemming": stemmed,
+        "lemmatization": lemmatized,
+        "cleaned": cleaned_text,
+        "spelling_corrected": corrected_text,
+        "subword_encoding": " ".join(subwords)
+    }
+
+# ----------------------------------------------------
+# PROCESS EACH ROW IN CSV
+# ----------------------------------------------------
+for i, row in df.iterrows():
+    processed = process_text(str(row["text"]))
+    processed_records.append(processed)
+
+# Convert to DataFrame
+processed_df = pd.DataFrame(processed_records)
+
+# SAVE OUTPUT
+processed_df.to_csv("processed_output.csv", index=False)
+
+print("\n==================== PROCESSING COMPLETE ====================")
+print("Saved -> processed_output.csv")
+print(processed_df.head())
